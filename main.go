@@ -25,9 +25,6 @@ const (
 	DEFAULT_MONGO_URI       string = "mongodb://127.0.0.1:27017"
 	DEFAULT_DB_NAME         string = "ephemerals"
 	DEFAULT_COLLECTION_NAME string = "sites"
-	//! CHANGE THIS
-	DEFAULT_BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
-	DEFAULT_SITES_FILE   string = "sites.json"
 	DEFAULT_MAX_TABS     int    = 32
 )
 
@@ -158,8 +155,7 @@ func main() {
 	//Env vars
 	SITES_FILE, found := os.LookupEnv("SITES_FILE")
 	if !found {
-		LOG.Warnf("SITES_FILE not found in .env or env, using default of %s", DEFAULT_SITES_FILE)
-		SITES_FILE = DEFAULT_SITES_FILE
+		LOG.Panic("SITES_FILE not found in .env or env")
 	}
 	rawJson, e := os.ReadFile(SITES_FILE)
 	if e != nil {
@@ -211,9 +207,7 @@ func main() {
 	// Env vars
 	BROWSER_PATH, found := os.LookupEnv("BROWSER_PATH")
 	if !found {
-		LOG.Warnf("BROWSER_PATH not found in .env or env, using default of %s", DEFAULT_BROWSER_PATH)
-		BROWSER_PATH = DEFAULT_BROWSER_PATH
-	}
+		LOG.Panic("BROWSER_PATH not found in .env or env")	}
 	// Start Playwright
 	pw, e := playwright.Run()
 	if e != nil {
