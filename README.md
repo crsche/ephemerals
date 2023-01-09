@@ -29,3 +29,9 @@ To run the script:
 ```sh
 go run main.go
 ```
+
+## TODO
+
+- Add packet sniffing with [GoPacket](https://github.com/google/gopacket) to capture TTL values.
+- Clean up and optimize using channels and by reusing browser resources.
+
