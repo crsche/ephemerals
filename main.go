@@ -6,18 +6,11 @@ import (
 	"sync"
 	"time"
 
-	// "time"
-
 	"context"
 	"encoding/json"
 
-	// "github.com/go-rod/rod"
-	// "github.com/go-rod/rod/lib/proto"
-	// "github.com/go-rod/stealth"
-	// "sync"
-	"github.com/playwright-community/playwright-go"
-	// "go.mongodb.org/mongo-driver/bson"
 	"github.com/joho/godotenv"
+	"github.com/playwright-community/playwright-go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
