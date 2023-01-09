@@ -15,7 +15,7 @@ Configuration is done using the `.env` file, you can find an example [here](.env
 - `BROWSER_PATH` should be something like `/home/{YOU}/.cache/ms-playwright/chromium-xxxx/chrome-linux/chrome`
 - `SITES_FILE` should be the path to the sites you would like to collect data for. This file should be in the following format:
   ```json
-  {"category": [url1, url2, url3, ...]}
+  { "category": ["https://google.com", "https://duckduckgo.com"] }
   ```
   - **NOTE**: The urls should **include** `http[s]://`
 - `MAX_TABS` Dictates the maximum number of tabs per browser window at once.
