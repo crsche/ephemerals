@@ -26,5 +26,4 @@ go.work
 # Depends on user installation
 .env
 
-# Testing file
-test.json
+*.json
