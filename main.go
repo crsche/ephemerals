@@ -124,7 +124,6 @@ func getCategory(urls *[]string, category string, browerChan chan playwright.Bro
 	for i, urlGroup := range urlBuffer {
 		LOG.Infof("Starting tab group %d", i)
 		for _, url := range urlGroup {
-			url = "https://" + url
 			page, e := b.NewPage()
 			if e != nil {
 				LOG.Panic("%s: Failed to create new page: %v", url, e)
