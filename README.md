@@ -15,7 +15,7 @@ Configuration is done using the `const` fields in [`main.go`](main.go)
   - You must update the `BROWSER_PATH` variable as it is specific to me (but your path should look similar), use the [install guide](https://playwright.dev/docs/intro) to install Playwright.
   - Additionally, the `SITES_FILE` must be in the following format:
     - ```json
-      {"category": "https://google.com", ... }
+      {"category": ["https://google.com", "https://duckduckgo.com"] }
       ```
     - Websites **must** include `http[s]://` or the program will fail.
 
