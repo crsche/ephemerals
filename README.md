@@ -11,8 +11,13 @@ This is a basic program for "ephemeral" URL research. It is still in early devel
 ## Configuration
 
 Configuration is done using the `const` fields in [`main.go`](main.go)
-- **NOTE**:
+- **NOTES**:
   - You must update the `BROWSER_PATH` variable as it is specific to me (but your path should look similar), use the [install guide](https://playwright.dev/docs/intro) to install Playwright.
+  - Additionally, the `SITES_FILE` must be in the following format:
+    - ```json
+      {"category": "https://google.com", ... }
+      ```
+    - Websites **must** include `http[s]://` or the program will fail.
 
 ## Running
 
