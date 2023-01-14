@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -30,20 +31,19 @@ const (
 	COLLECTION_NAME string = "sites"
 
 	// Maximum number of concurrent browsers contexts
-	MAX_BROWSERS int = 8
+	MAX_BROWSERS int = 2
 	// Maximum number of tabs per browser context
-	MAX_TABS int = 32
+	MAX_TABS int = 8
 	// Path to a **Playwright** browser
 	BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
+	// How long to wait in addition to "networkidle"
+	LOAD_WAIT time.Duration = time.Duration(0) * time.Second
 
 	// Where to load our DNS client (for TTLs) config from
 	RESOLV_CONF string = "/etc/resolv.conf"
 
 	// Where to find the input website data
-	SITES_FILE string = "test.json"
-
-	// How long to wait in addition to "networkidle"
-	LOAD_WAIT time.Duration = time.Duration(10) * time.Second
+	SITES_FILE string = "sites.json"
 )
 
 type Input map[string][]string
@@ -99,17 +99,33 @@ func chunks[T any](items []T, chunkSize int) (chunks [][]T) {
 	return append(chunks, items)
 }
 
+// Get TTL info for a hostname
+func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
+	m := dns.Msg{}
+	m.SetQuestion(url.Host+".", dns.TypeA)
+	r, _, e := c.Exchange(&m, net.JoinHostPort(conf.Servers[0], conf.Port))
+	if e != nil {
+		return 0, e
+	} else if len(r.Answer) < 1 {
+		return 0, fmt.Errorf("DNS response contained no answers")
+	} else {
+		return r.Answer[0].Header().Ttl, nil
+	}
+}
+
 // Gets data for a given category and inserts it into the database
-func getCategory(urls *[]string, category string, bCtx *playwright.BrowserContext, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
-	defer wg.Done()
+func getCategory(urls *[]string, category string, browerChan chan playwright.BrowserContext, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+	b := <-browerChan
+	if b == nil {
+		LOG.Panic("Failed to get browser context for `%s`", category)
+	}
 	var wg2 sync.WaitGroup
-
 	urlBuffer := chunks(*urls, MAX_TABS)
-
 	for i, urlGroup := range urlBuffer {
-		LOG.Debugf("Starting tab group %d", i)
+		LOG.Infof("Starting tab group %d", i)
 		for _, url := range urlGroup {
-			page, e := (*bCtx).NewPage()
+			url = "https://" + url
+			page, e := b.NewPage()
 			if e != nil {
 				LOG.Panic("%s: Failed to create new page: %v", url, e)
 			}
@@ -118,17 +134,14 @@ func getCategory(urls *[]string, category string, bCtx *playwright.BrowserContex
 		}
 		wg2.Wait()
 	}
+	browerChan <- b
+	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
 func getSite(url string, category string, page *playwright.Page, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer (*page).Close()
-
-	LOG.Debugf("%s: starting data collection", url)
-
+	LOG.Infof("%s: starting data collection", url)
 	var reqs []Request
-
 	(*page).On("request", func(req playwright.Request) {
 		LOG.Debugf("%s -> %s", url, req.URL())
 
@@ -136,18 +149,9 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 		if e != nil {
 			LOG.Errorf("%s: failed to parse hostname of request to `%s`: %v", url, req.URL(), e)
 		} else {
-			// Get TTL info
-			var ttl uint32
-			m := dns.Msg{}
-			m.SetQuestion(parsedUrl.Host+".", dns.TypeA)
-			r, _, e := dnsClient.Exchange(&m, net.JoinHostPort(dnsConf.Servers[0], dnsConf.Port))
+			ttl, e := getTTL(dnsClient, dnsConf, parsedUrl)
 			if e != nil {
-				LOG.Errorf("%s: failed to make DNS request for %s: %v", url, parsedUrl.Host, e)
-			} else if len(r.Answer) < 1 {
-				LOG.Errorf("%s: DNS request to %s contained no answers", url, parsedUrl.Host)
-			} else {
-				ttl = r.Answer[0].Header().Ttl
-				LOG.Debugf("%s: got ttl of %dms for %s", url, ttl, parsedUrl.Host)
+				LOG.Errorf("%s: failed to get ttl of request to `%s`: %v", url, parsedUrl.Host, e)
 			}
 			reqs = append(reqs, Request{Url: *parsedUrl, ResourceType: req.ResourceType(), TTL: ttl})
 		}
@@ -156,7 +160,6 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 	// Load page
 	start := time.Now()
 	_, e := (*page).Goto(url)
-
 	if e != nil {
 		LOG.Warnf("%s: failed to fully load: %v", url, e)
 	} else {
@@ -165,7 +168,7 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 	elapsed := time.Since(start)
 	LOG.Debugf("%s: paged loaded (`networkidle`), took %fs", url, elapsed.Seconds())
 	LOG.Debugf("%s: waiting an additional %fs", url, LOAD_WAIT.Seconds())
-	time.Sleep(LOAD_WAIT)
+	(*page).WaitForTimeout(float64(LOAD_WAIT.Milliseconds()))
 	LOG.Debugf("%s: finished waiting", url)
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
 
@@ -182,6 +185,8 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 		LOG.Debugf("%s: created new db entry", url)
 	}
 	LOG.Debugf("%s: inserted new trial", url)
+	wg.Done()
+	(*page).Close()
 }
 
 var (
@@ -199,16 +204,18 @@ func main() {
 		log.Panicf("Failed to build logger config: %v", e)
 	}
 	LOG = rawLog.Sugar()
-	defer rawLog.Sync()
 	LOG.Info("Initialized logger")
 
 	//! Load sites file
-	rawJson, e := os.ReadFile(SITES_FILE)
+	f, e := os.Open(SITES_FILE)
 	if e != nil {
-		LOG.Panicf("Failed to read sites file at %s: %v", SITES_FILE, e)
+		LOG.Panicf("Failed to open sites file at %s: %v", SITES_FILE, e)
 	}
 	var categories Input
-	json.Unmarshal(rawJson, &categories)
+	e = json.NewDecoder(f).Decode(&categories)
+	if e != nil {
+		LOG.Panicf("Failed to load JSON from %s into struct: %v", SITES_FILE, e)
+	}
 	LOG.Infof("Got site list from %s", SITES_FILE)
 
 	//! Init DB
@@ -218,11 +225,6 @@ func main() {
 	if e != nil {
 		LOG.Panicf("Failed to connect to DB: %v", e)
 	}
-	defer func() {
-		if e := dbClient.Disconnect(dbCtx); e != nil {
-			LOG.Panicf("Failed to disconnect from DB: %v", e)
-		}
-	}()
 
 	// Verify DB connection
 	e = dbClient.Ping(dbCtx, readpref.Primary())
@@ -240,7 +242,6 @@ func main() {
 	if e != nil {
 		LOG.Panicf("Failed to start playwright: %v", e)
 	}
-	defer pw.Stop()
 	LOG.Info("Started Playwright")
 
 	// Start browser
@@ -249,35 +250,65 @@ func main() {
 	if e != nil {
 		LOG.Panicf("Failed to launch browser: %v", e)
 	}
-	defer func() {
-		if e = browser.Close(); e != nil {
-			LOG.Panicf("Failed to close browser: %v", e)
-		}
-	}()
+
 	LOG.Infof("Launched Chromium version %s", browser.Version())
+	browsers := make(chan playwright.BrowserContext, MAX_BROWSERS)
+	for i := 0; i < MAX_BROWSERS; i++ {
+		ctx, e := browser.NewContext()
+		if e != nil {
+			LOG.Panicf("Failed to load browser context %d", i)
+		}
+		browsers <- ctx
+	}
 
 	//! Init DNS client
-	conf, e := dns.ClientConfigFromFile(RESOLV_CONF)
+	dnsConf, e := dns.ClientConfigFromFile(RESOLV_CONF)
 	if e != nil {
 		LOG.Panicf("Failed to load DNS config from %s: %v", RESOLV_CONF, e)
 	}
+	if len(dnsConf.Servers) < 1 {
+		LOG.Panic("DNS conf contained no servers")
+	}
+	LOG.Infof("Using DNS server of %s", dnsConf.Servers[0])
 	c := dns.Client{}
 
 	//! Data collection
 	browserChunks := categories.Chunks(MAX_BROWSERS)
-
 	LOG.Info("Starting data collection")
 	var wg sync.WaitGroup
 	for i, chunk := range browserChunks {
-		LOG.Debugf("Starting browser chunk %d", i)
+		LOG.Infof("Starting browser chunk %d", i)
 		for category, sites := range chunk {
-			bCtx, e := browser.NewContext() //! Browser customization here
 			if e != nil {
 				LOG.Panicf("Failed to create browser context for %s: %v", category, e)
 			}
 			wg.Add(1)
-			go getCategory(&sites, category, &bCtx, collection, &c, conf, &wg)
+			go getCategory(&sites, category, browsers, collection, &c, dnsConf, &wg)
 		}
 		wg.Wait()
+	}
+
+	//! End of program
+	e = browser.Close()
+	if e != nil {
+		LOG.Panicf("Failed close browser: %v", e)
+	}
+	LOG.Info("Closed browser")
+
+	e = pw.Stop()
+	if e != nil {
+		LOG.Panicf("Failed to stop Playwright: %v", e)
+	}
+	LOG.Info("Stopped Playwright")
+
+	e = dbClient.Disconnect(dbCtx)
+	if e != nil {
+		LOG.Panicf("Failed to disconnect from DB: %v", e)
+	}
+	LOG.Info("Disconnected from DB")
+
+	e = rawLog.Sync()
+	if e != nil {
+		LOG.Panicf("Failed to sync log buffers: %v", e)
 	}
 }
