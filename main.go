@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	// "runtime"
 	"sync"
 	"time"
 
@@ -26,14 +27,18 @@ const (
 	DB_NAME         string = "ephemerals"
 	COLLECTION_NAME string = "sites"
 
-	MAX_TABS     int    = 32
+	// Maximum number of concurrent browsers contexts
 	MAX_BROWSERS int    = 8
+	// Maximum number of tabs per browser context
+	MAX_TABS     int    = 32
+	// Path to a **Playwright** browser
 	BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
 
+	// Where to find the input website data
 	SITES_FILE string = "test.json"
 
-	// How longto wait in addition to "networkidle"
-	LOAD_WAIT time.Duration = time.Duration(15) * time.Second
+	// How long to wait in addition to "networkidle"
+	LOAD_WAIT time.Duration = time.Duration(30) * time.Second
 )
 
 type Input map[string][]string
