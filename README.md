@@ -29,4 +29,5 @@ go run main.go
 
 ## TODO
 
+- Make data collection more efficient/parallel (streams vs chunks?)
 - ~~Add TTL data gathering~~
