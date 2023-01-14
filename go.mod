@@ -1,4 +1,4 @@
-module github.com/conelul/ephemerals-v2
+module github.com/conelul/ephemerals
 
 go 1.19
 
