@@ -29,4 +29,4 @@ go run main.go
 
 ## TODO
 
-- Add TTL data gathering
+- ~~Add TTL data gathering~~
