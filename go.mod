@@ -3,7 +3,6 @@ module github.com/conelul/ephemerals-v2
 go 1.19
 
 require (
-	github.com/joho/godotenv v1.4.0
 	github.com/playwright-community/playwright-go v0.2000.1
 	go.mongodb.org/mongo-driver v1.11.1
 	go.uber.org/zap v1.24.0
