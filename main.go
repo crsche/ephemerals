@@ -34,8 +34,8 @@ const (
 	MAX_TABS int = 16
 	// Path to a **Playwright** browser
 	BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
-	// How long to wait in addition to "networkidle"
-	LOAD_WAIT time.Duration = time.Duration(0) * time.Second
+	// Timeout for networkidle
+	LOAD_TIMEOUT time.Duration = time.Duration(0) * time.Second
 
 	// Where to load our DNS client (for TTLs) config from
 	RESOLV_CONF string = "/etc/resolv.conf"
@@ -168,13 +168,12 @@ func getSite(url string, category string, p *playwright.Page, collection *mongo.
 	if e != nil {
 		LOG.Warnf("%s: failed to fully load: %v", url, e)
 	} else {
-		(*p).WaitForLoadState("networkidle")
+		timeout := float64(LOAD_TIMEOUT.Milliseconds())
+		_, e := (*p).WaitForNavigation(playwright.PageWaitForNavigationOptions{WaitUntil: playwright.WaitUntilStateNetworkidle, Timeout: &timeout})
+		LOG.Warnf("%s: failed to wait for network idle: %v", url, e)
+		// (*p).WaitForLoadState("networkidle")
 	}
-	elapsed := time.Since(start)
-	LOG.Debugf("%s: paged loaded (`networkidle`), took %fs", url, elapsed.Seconds())
-	LOG.Debugf("%s: waiting an additional %fs", url, LOAD_WAIT.Seconds())
-	(*p).WaitForTimeout(float64(LOAD_WAIT.Milliseconds()))
-	LOG.Debugf("%s: finished waiting", url)
+
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
 
 	// Construct trial
@@ -204,6 +203,7 @@ func main() {
 	// TODO: Change config for prod
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder // Enable color
+	config.Level.SetLevel(zapcore.InfoLevel)
 	rawLog, e := config.Build()
 	if e != nil {
 		log.Panicf("Failed to build logger config: %v", e)
