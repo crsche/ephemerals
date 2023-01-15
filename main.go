@@ -30,10 +30,8 @@ const (
 	DB_NAME         string = "ephemerals"
 	COLLECTION_NAME string = "sites"
 
-	// Maximum number of concurrent browsers contexts
-	MAX_BROWSERS int = 2
-	// Maximum number of tabs per browser context
-	MAX_TABS int = 8
+	// Maximum number of tabs
+	MAX_TABS int = 16
 	// Path to a **Playwright** browser
 	BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
 	// How long to wait in addition to "networkidle"
@@ -46,22 +44,29 @@ const (
 	SITES_FILE string = "sites.json"
 )
 
-type Input map[string][]string
+type RawInput map[string][]string
+type Input []InputSite
+type InputSite struct {
+	category string
+	url      string
+}
 
-func (in Input) Chunks(size int) []Input {
-	res := make([]Input, len(in)/size)
-	chunk := make(Input, size)
-	i := 0
-	for k, v := range in {
-		chunk[k] = v
-		i++
-		if i == size || i == len(in) {
-			i = 0
-			res = append(res, chunk)
-			chunk = make(Input, size)
+// Flatten categories
+func (in RawInput) Flatten() Input {
+	var res Input
+	for c, urls := range in {
+		for _, url := range urls {
+			res = append(res, InputSite{c, url})
 		}
 	}
 	return res
+}
+
+func (in Input) Chunks(size int) (chunks [][]InputSite) {
+	for size < len(in) {
+		in, chunks = in[size:], append(chunks, in[0:size:size])
+	}
+	return append(chunks, in)
 }
 
 // Represents a single top-level site in the database
@@ -92,13 +97,6 @@ type Request struct {
 	TTL          uint32 `bson:"ttl"`
 }
 
-func chunks[T any](items []T, chunkSize int) (chunks [][]T) {
-	for chunkSize < len(items) {
-		items, chunks = items[chunkSize:], append(chunks, items[0:chunkSize:chunkSize])
-	}
-	return append(chunks, items)
-}
-
 // Get TTL info for a hostname
 func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	m := dns.Msg{}
@@ -113,35 +111,43 @@ func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	}
 }
 
-// Gets data for a given category and inserts it into the database
-func getCategory(urls *[]string, category string, browerChan chan playwright.BrowserContext, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
-	b := <-browerChan
-	if b == nil {
-		LOG.Panic("Failed to get browser context for `%s`", category)
+// // Gets data for a given category and inserts it into the database
+// func getCategory(urls *[]string, category string, browser *playwright.Browser, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+// 	var wg2 sync.WaitGroup
+// 	urlBuffer := chunks(*urls, MAX_TABS)
+// 	for i, urlGroup := range urlBuffer {
+// 		LOG.Infof("Starting tab group %d", i)
+// 		for _, url := range urlGroup {
+// 			page, e := b.NewPage()
+// 			if e != nil {
+// 				LOG.Panic("%s: Failed to create new page: %v", url, e)
+// 			}
+// 			wg2.Add(1)
+// 			go getSite(url, category, &page, collection, dnsClient, dnsConf, &wg2)
+// 		}
+// 		wg2.Wait()
+// 	}
+// 	wg.Done()
+// }
+
+func getQueue(sites []InputSite, b *playwright.Browser, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+	page, e := (*b).NewPage()
+	if e != nil {
+		LOG.Errorf("Failed to create page: %v", e)
 	}
-	var wg2 sync.WaitGroup
-	urlBuffer := chunks(*urls, MAX_TABS)
-	for i, urlGroup := range urlBuffer {
-		LOG.Infof("Starting tab group %d", i)
-		for _, url := range urlGroup {
-			page, e := b.NewPage()
-			if e != nil {
-				LOG.Panic("%s: Failed to create new page: %v", url, e)
-			}
-			wg2.Add(1)
-			go getSite(url, category, &page, collection, dnsClient, dnsConf, &wg2)
-		}
-		wg2.Wait()
+	for _, site := range sites {
+		getSite(site.url, site.category, &page, collection, dnsClient, dnsConf)
 	}
-	browerChan <- b
 	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
-func getSite(url string, category string, page *playwright.Page, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+func getSite(url string, category string, p *playwright.Page, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
 	LOG.Infof("%s: starting data collection", url)
+	url = "https://" + url
+
 	var reqs []Request
-	(*page).On("request", func(req playwright.Request) {
+	(*p).On("request", func(req playwright.Request) {
 		LOG.Debugf("%s -> %s", url, req.URL())
 
 		parsedUrl, e := u.ParseRequestURI(req.URL())
@@ -158,21 +164,23 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 
 	// Load page
 	start := time.Now()
-	_, e := (*page).Goto(url)
+	_, e := (*p).Goto(url)
 	if e != nil {
 		LOG.Warnf("%s: failed to fully load: %v", url, e)
 	} else {
-		(*page).WaitForLoadState("networkidle")
+		(*p).WaitForLoadState("networkidle")
 	}
 	elapsed := time.Since(start)
 	LOG.Debugf("%s: paged loaded (`networkidle`), took %fs", url, elapsed.Seconds())
 	LOG.Debugf("%s: waiting an additional %fs", url, LOAD_WAIT.Seconds())
-	(*page).WaitForTimeout(float64(LOAD_WAIT.Milliseconds()))
+	(*p).WaitForTimeout(float64(LOAD_WAIT.Milliseconds()))
 	LOG.Debugf("%s: finished waiting", url)
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
 
 	// Construct trial
-	trial := Trial{BrowserVersion: (*page).Context().Browser().Version(), StartTime: start, Requests: reqs}
+	trial := Trial{BrowserVersion: (*p).Context().Browser().Version(), StartTime: start, Requests: reqs}
+	// Stop load
+	(*p).Goto("about:blank")
 
 	True := true // So we can reference
 	// Insert or update the new trial Debugrmation
@@ -181,11 +189,9 @@ func getSite(url string, category string, page *playwright.Page, collection *mon
 		LOG.Errorf("%s: failed to update trial: %v", url, e)
 	}
 	if res.UpsertedID != nil {
-		LOG.Debugf("%s: created new db entry", url)
+		LOG.Infof("%s: created new db entry", url)
 	}
-	LOG.Debugf("%s: inserted new trial", url)
-	wg.Done()
-	(*page).Close()
+	LOG.Infof("%s: inserted new trial", url)
 }
 
 var (
@@ -210,11 +216,12 @@ func main() {
 	if e != nil {
 		LOG.Panicf("Failed to open sites file at %s: %v", SITES_FILE, e)
 	}
-	var categories Input
+	var categories RawInput
 	e = json.NewDecoder(f).Decode(&categories)
 	if e != nil {
 		LOG.Panicf("Failed to load JSON from %s into struct: %v", SITES_FILE, e)
 	}
+	sitesBuffered := categories.Flatten().Chunks(MAX_TABS)
 	LOG.Infof("Got site list from %s", SITES_FILE)
 
 	//! Init DB
@@ -251,14 +258,6 @@ func main() {
 	}
 
 	LOG.Infof("Launched Chromium version %s", browser.Version())
-	browsers := make(chan playwright.BrowserContext, MAX_BROWSERS)
-	for i := 0; i < MAX_BROWSERS; i++ {
-		ctx, e := browser.NewContext()
-		if e != nil {
-			LOG.Panicf("Failed to load browser context %d", i)
-		}
-		browsers <- ctx
-	}
 
 	//! Init DNS client
 	dnsConf, e := dns.ClientConfigFromFile(RESOLV_CONF)
@@ -272,20 +271,22 @@ func main() {
 	c := dns.Client{}
 
 	//! Data collection
-	browserChunks := categories.Chunks(MAX_BROWSERS)
+	// tabs := make(chan playwright.Page, MAX_TABS)
+	// for i := 0; i < MAX_TABS; i++ {
+	// 	p, e := browser.NewPage()
+	// 	if e != nil {
+	// 		LOG.Panicf("Failed to create page %d: %v", i, e)
+	// 	}
+	// 	tabs <- p
+	// }
 	LOG.Info("Starting data collection")
 	var wg sync.WaitGroup
-	for i, chunk := range browserChunks {
+	for i, sites := range sitesBuffered {
 		LOG.Infof("Starting browser chunk %d", i)
-		for category, sites := range chunk {
-			if e != nil {
-				LOG.Panicf("Failed to create browser context for %s: %v", category, e)
-			}
-			wg.Add(1)
-			go getCategory(&sites, category, browsers, collection, &c, dnsConf, &wg)
-		}
-		wg.Wait()
+		wg.Add(1)
+		go getQueue(sites, &browser, collection, &c, dnsConf, &wg)
 	}
+	wg.Wait()
 
 	//! End of program
 	e = browser.Close()
