@@ -256,7 +256,7 @@ func main() {
 	LOG.Info("Starting data collection")
 	var wg sync.WaitGroup
 	for i, sites := range tabGroups {
-		LOG.Infof("Starting browser chunk %d", i)
+		LOG.Infof("Starting tab %d", i)
 		wg.Add(1)
 		go getQueue(sites, &browser, collection, &c, dnsConf, &wg)
 	}
