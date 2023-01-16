@@ -11,13 +11,14 @@ This is a basic program for "ephemeral" URL research. It is still in early devel
 ## Configuration
 
 Configuration is done using the `const` fields in [`main.go`](main.go)
+
 - **NOTES**:
   - You must update the `BROWSER_PATH` variable as it is specific to me (but your path should look similar), use `go run github.com/playwright-community/playwright-go/cmd/playwright install` to install Playwright.
   - Additionally, the `SITES_FILE` must be in the following format:
+
     - ```json
       {"category": ["google.com", "duckduckgo.com"] }
       ```
-    - Websites **must not** include `http[s]://` or the program will fail.
 
 ## Running
 
@@ -29,6 +30,6 @@ go run main.go
 
 ## TODO
 
-- Don't revisit duplicate sites in differnet categories
+- Preprocessor to remove the unreachable websites
 - ~~Add TTL data gathering~~
 - ~~Make data collection more efficient/parallel (streams vs chunks?)~~
