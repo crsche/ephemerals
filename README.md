@@ -29,5 +29,6 @@ go run main.go
 
 ## TODO
 
-- Make data collection more efficient/parallel (streams vs chunks?)
+- Don't revisit duplicate sites in differnet categories
 - ~~Add TTL data gathering~~
+- ~~Make data collection more efficient/parallel (streams vs chunks?)~~
