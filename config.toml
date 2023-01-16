@@ -1,0 +1,30 @@
+[collection]
+# Sites to visit, should be in {category: [url, ...]} format
+sites_in = "sites5000.json"
+
+[collection.db]
+# MongoDB config
+uri = "mongodb://127.0.0.1:27017"
+name = "ephemerals"
+collection = "sites"
+
+[collection.browser]
+# Path to Playwright browser binary
+path = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
+# How many tabs to be open at any given time
+max_tabs = 64
+# Timeout for waiting for "networkidle" in milliseconds
+timeout = 30000
+
+[collection.dns]
+# resolv.conf format configuration for getting dns resolvers
+conf_path = "/etc/resolv.conf"
+
+
+[preprocessor]
+# List of URLs to be processed
+in = "tranco100k.csv"
+# Output of the URLs that 'exist'
+exists_out = "100k_exists.csv"
+# Output of the URLs that don't 'exist'
+unexists_out = "100k_unexists.csv"

@@ -22,34 +22,74 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/BurntSushi/toml"
 )
 
-// ! Config
 const (
-	MONGO_URI       string = "mongodb://127.0.0.1:27017"
-	DB_NAME         string = "ephemerals"
-	COLLECTION_NAME string = "sites"
-
-	// Maximum number of tabs
-	MAX_TABS int = 32
-	// Path to a **Playwright** browser
-	BROWSER_PATH string = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
-	// Timeout for networkidle
-	LOAD_TIMEOUT time.Duration = time.Duration(10) * time.Second
-
-	// Where to load our DNS client (for TTLs) config from
-	RESOLV_CONF string = "/etc/resolv.conf"
-
-	// Where to find the input website data
-	SITES_FILE string = "sites.json"
+	CONF_PATH = "../config.toml"
 )
 
-type RawInput map[string][]string
-type Input []InputSite
-type InputSite struct {
-	category string
-	url      string
-}
+type (
+	// TOML configuration
+	Config struct {
+		Collection struct {
+			Sites string `toml:"sites_in"`
+			Db    struct {
+				Uri        string
+				Name       string
+				Collection string
+			}
+			Browser struct {
+				Path    string
+				MaxTabs int `toml:"max_tabs"`
+				Timeout float64
+			}
+			Dns struct {
+				ConfPath string `toml:"conf_path"`
+			}
+		}
+	}
+
+	// Raw JSON input {category: [url]}
+	RawInput map[string][]string
+	// Flattened JSON: [{url, category}]
+	Input []InputSite
+	// Because no tuples :(
+	InputSite struct {
+		Category string
+		Url      string
+	}
+
+	// Represents a single top-level site in the database
+	Site struct {
+		// Top-level site url
+		Url string
+		// What category does the site belong to?
+		Category string
+		// Collection of trials for this URL
+		Trials []Trial
+	}
+	Trial struct {
+		// Browser version string
+		BrowserVersion string `bson:"browser_version"`
+		// Time at which the trial was **started**
+		StartTime time.Time `bson:"start_time"`
+		// List of requests observed by trial
+		//
+		// There can and **will** be duplicates
+		Requests []Request
+	}
+
+	Request struct {
+		// URL of the request
+		Url      u.URL
+		HostName string
+		// Type of request
+		ResourceType string `bson:"resource_type"`
+		TTL          uint32
+	}
+)
 
 // Flatten categories
 func (in RawInput) Flatten() Input {
@@ -62,6 +102,7 @@ func (in RawInput) Flatten() Input {
 	return res
 }
 
+// Form numChunks chunks from array
 func (in Input) Chunks(numChunks int) (chunks [][]InputSite) {
 	for i := 0; i < numChunks; i++ {
 		min := (i * len(in) / numChunks)
@@ -69,34 +110,6 @@ func (in Input) Chunks(numChunks int) (chunks [][]InputSite) {
 		chunks = append(chunks, in[min:max])
 	}
 	return chunks
-}
-
-// Represents a single top-level site in the database
-type Site struct {
-	// Top-level site url
-	Url string `bson:"url"`
-	// What category does the site belong to?
-	Category string `bson:"category"`
-	// Collection of trials for this URL
-	Trials []Trial `bson:"trials"`
-}
-type Trial struct {
-	// Browser version string
-	BrowserVersion string `bson:"browser_version"`
-	// Time at which the trial was **started**
-	StartTime time.Time `bson:"start_time"`
-	// List of requests observed by trial
-	//
-	// There can and **will** be duplicates
-	Requests []Request `bson:"requests"`
-}
-
-type Request struct {
-	// URL of the request
-	Url u.URL `bson:"url"`
-	// Type of request
-	ResourceType string `bson:"resource_type"`
-	TTL          uint32 `bson:"ttl"`
 }
 
 // Get TTL info for a hostname
@@ -113,15 +126,15 @@ func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	}
 }
 
-func getQueue(sites []InputSite, b *playwright.Browser, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+func getQueue(sites []InputSite, b *playwright.Browser, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
 	for _, site := range sites {
-		getSite(site.url, site.category, b, collection, dnsClient, dnsConf)
+		getSite(site.Url, site.Category, b, timeout, collection, dnsClient, dnsConf)
 	}
 	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
-func getSite(url string, category string, b *playwright.Browser, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
+func getSite(url string, category string, b *playwright.Browser, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
 	LOG.Infof("%s: starting data collection", url)
 	url = "https://" + url
 
@@ -141,7 +154,7 @@ func getSite(url string, category string, b *playwright.Browser, collection *mon
 			if e != nil {
 				LOG.Warnf("%s: failed to get ttl of request to `%s`: %v", url, parsedUrl.Host, e)
 			}
-			reqs = append(reqs, Request{Url: *parsedUrl, ResourceType: req.ResourceType(), TTL: ttl})
+			reqs = append(reqs, Request{Url: *parsedUrl, HostName: parsedUrl.Host, ResourceType: req.ResourceType(), TTL: ttl})
 		}
 	})
 
@@ -151,10 +164,8 @@ func getSite(url string, category string, b *playwright.Browser, collection *mon
 	if e != nil {
 		LOG.Errorf("%s: failed to fully load: %v", url, e)
 	} else {
-		timeout := float64(LOAD_TIMEOUT.Milliseconds())
 		_, e := p.WaitForNavigation(playwright.PageWaitForNavigationOptions{WaitUntil: playwright.WaitUntilStateNetworkidle, Timeout: &timeout})
 		LOG.Warnf("%s: failed to wait for network idle: %v", url, e)
-		// (*p).WaitForLoadState("networkidle")
 	}
 
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
@@ -175,10 +186,8 @@ func getSite(url string, category string, b *playwright.Browser, collection *mon
 	p.Close()
 }
 
-var (
-	// ! GLOBAL LOGGER
-	LOG *zap.SugaredLogger
-)
+// ! GLOBAL LOGGER
+var LOG *zap.SugaredLogger
 
 func main() {
 	//! Init logging
@@ -193,23 +202,29 @@ func main() {
 	LOG = rawLog.Sugar()
 	LOG.Info("Initialized logger")
 
-	//! Load sites file
-	f, e := os.Open(SITES_FILE)
+	var conf Config
+	_, e = toml.DecodeFile(CONF_PATH, &conf)
 	if e != nil {
-		LOG.Panicf("Failed to open sites file at %s: %v", SITES_FILE, e)
+		LOG.Panicf("Failed to load TOML file at %s: %v", CONF_PATH, e)
+	}
+
+	//! Load sites file
+	f, e := os.Open(conf.Collection.Sites)
+	if e != nil {
+		LOG.Panicf("Failed to open sites file at %s: %v", conf.Collection.Sites, e)
 	}
 	var categories RawInput
 	e = json.NewDecoder(f).Decode(&categories)
 	if e != nil {
-		LOG.Panicf("Failed to load JSON from %s into struct: %v", SITES_FILE, e)
+		LOG.Panicf("Failed to load JSON from %s into struct: %v", conf.Collection.Sites, e)
 	}
-	tabGroups := categories.Flatten().Chunks(MAX_TABS)
-	LOG.Infof("Got site list from %s", SITES_FILE)
+	tabGroups := categories.Flatten().Chunks(conf.Collection.Browser.MaxTabs)
+	LOG.Infof("Got site list from %s", conf.Collection.Sites)
 
 	//! Init DB
 	// Actual init
 	dbCtx := context.Background()
-	dbClient, e := mongo.Connect(dbCtx, options.Client().ApplyURI(MONGO_URI))
+	dbClient, e := mongo.Connect(dbCtx, options.Client().ApplyURI(conf.Collection.Db.Uri))
 	if e != nil {
 		LOG.Panicf("Failed to connect to DB: %v", e)
 	}
@@ -219,10 +234,10 @@ func main() {
 	if e != nil {
 		LOG.Panicf("Client couldn't connect to the DB: %v", e)
 	}
-	LOG.Infof("Connected to MongoDB with URI %s", MONGO_URI)
+	LOG.Infof("Connected to MongoDB with URI %s", conf.Collection.Db.Uri)
 	// Connect to specific site Debugrmation collection
-	collection := dbClient.Database(DB_NAME).Collection(COLLECTION_NAME)
-	LOG.Infof("Connected to `%s` collection on `%s` DB", COLLECTION_NAME, DB_NAME)
+	collection := dbClient.Database(conf.Collection.Db.Name).Collection(conf.Collection.Db.Collection)
+	LOG.Infof("Connected to `%s` collection on `%s` DB", conf.Collection.Db.Collection, conf.Collection.Db.Name)
 
 	//! Init playwright & browser
 	// Start Playwright
@@ -231,20 +246,24 @@ func main() {
 		LOG.Panicf("Failed to start playwright: %v", e)
 	}
 	LOG.Info("Started Playwright")
-
+	var browser playwright.Browser
 	// Start browser
-	path := BROWSER_PATH
-	browser, e := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{ExecutablePath: &path}) //! Browser customization here
+	if conf.Collection.Browser.Path != "" {
+		LOG.Infof("Using browser path: %s", conf.Collection.Browser.Path)
+		browser, e = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{ExecutablePath: &conf.Collection.Browser.Path})
+	} else {
+		LOG.Info("Defaulting to default Playwright browser")
+		browser, e = pw.Chromium.Launch()
+	}
 	if e != nil {
 		LOG.Panicf("Failed to launch browser: %v", e)
 	}
-
 	LOG.Infof("Launched Chromium version %s", browser.Version())
 
 	//! Init DNS client
-	dnsConf, e := dns.ClientConfigFromFile(RESOLV_CONF)
+	dnsConf, e := dns.ClientConfigFromFile(conf.Collection.Dns.ConfPath)
 	if e != nil {
-		LOG.Panicf("Failed to load DNS config from %s: %v", RESOLV_CONF, e)
+		LOG.Panicf("Failed to load DNS config from %s: %v", conf.Collection.Dns.ConfPath, e)
 	}
 	if len(dnsConf.Servers) < 1 {
 		LOG.Panic("DNS conf contained no servers")
@@ -254,11 +273,12 @@ func main() {
 
 	//! Data collection
 	LOG.Info("Starting data collection")
+	LOG.Info(tabGroups)
 	var wg sync.WaitGroup
 	for i, sites := range tabGroups {
 		LOG.Infof("Starting tab %d", i)
 		wg.Add(1)
-		go getQueue(sites, &browser, collection, &c, dnsConf, &wg)
+		go getQueue(sites, &browser, conf.Collection.Browser.Timeout, collection, &c, dnsConf, &wg)
 	}
 	wg.Wait()
 

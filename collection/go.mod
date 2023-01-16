@@ -3,6 +3,7 @@ module github.com/conelul/ephemerals
 go 1.19
 
 require (
+	github.com/BurntSushi/toml v1.2.1
 	github.com/miekg/dns v1.1.50
 	github.com/playwright-community/playwright-go v0.2000.1
 	go.mongodb.org/mongo-driver v1.11.1
