@@ -194,7 +194,8 @@ func main() {
 	var trialNum int
 	var confPath string
 	flag.IntVar(&trialNum, "t", -1, "Trial number, defaults to -1")
-	flag.StringVar(&confPath, "conf", "../config.toml", "Path to the configuration file, defaults to '../config.toml'")
+	flag.StringVar(&confPath, "c", "../config.toml", "Path to the configuration file, defaults to '../config.toml'")
+	flag.Parse()
 
 	//! Parse config.toml
 	var conf Config
