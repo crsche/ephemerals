@@ -8,9 +8,7 @@ use std::{
 	env,
 	fs::{self, File, OpenOptions},
 	io::{BufReader, BufWriter, Write},
-	net::Ipv4Addr,
-	str::FromStr,
-	sync::{Arc, Mutex},
+	sync::Mutex,
 };
 
 use anyhow::Result;
@@ -79,7 +77,6 @@ async fn main() -> Result<()> {
 		// Determine if hostnamess exist
 		let mut st = stream::iter(hostnames)
 			.map(|hostname| {
-
 				let pb = &pb;
 				let resolver = &resolver;
 				async move {
