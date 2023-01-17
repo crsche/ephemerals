@@ -173,7 +173,7 @@ func getSite(url string, category string, ctx *playwright.BrowserContext, loadTi
 
 	True := true // So we can reference
 	// Insert or update the new trial Debugrmation
-	res, e := collection.UpdateOne(context.Background(), bson.D{{"url", url}, {"category", category}}, bson.D{{"$push", bson.D{{"trials", trial}}}}, &options.UpdateOptions{Upsert: &True})
+	res, e := collection.UpdateOne(context.Background(), bson.D{{Key: "url", Value: url}, {Key: "category", Value: category}}, bson.D{{Key: "$push", Value: bson.D{{Key: "trials", Value: trial}}}}, &options.UpdateOptions{Upsert: &True})
 	if e != nil {
 		LOG.Errorf("%s: failed to update trial: %v", url, e)
 	}
