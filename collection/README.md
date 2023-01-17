@@ -26,4 +26,6 @@ You can set the log level in the config if it's too messy.
 
 ## TODO
 
+- Add a "trial_num" flag to DB trial entries (and add a flag to the program).
+- Use a flat load timer instead of waiting for networkidle.
 - Write this in Rust because it's most likely way more efficient :D.
