@@ -10,8 +10,8 @@ name = "ephemerals"
 collection = "sites"
 
 [collection.browser]
-# Path to Playwright browser binary
-path = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
+# Path to Playwright browser binary IF LEFT EMPTY IT WILL BE DETECTED AUTOMATICALLY
+path = ""
 # How many tabs to be open at any given time
 max_tabs = 64
 # Timeout for waiting for "networkidle" in milliseconds
@@ -24,7 +24,7 @@ conf_path = "/etc/resolv.conf"
 
 [preprocess]
 # List of URLs to be processed
-input = "tranco100k.json"
+input = "sites100k.json"
 # Output of the URLs that 'exist'
 exists_out = "100k_exists.json"
 # Output of the URLs that don't 'exist'
