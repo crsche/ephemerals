@@ -282,7 +282,6 @@ func main() {
 
 	//! Data collection
 	LOG.Info("Starting data collection")
-	LOG.Info(tabGroups)
 	var wg sync.WaitGroup
 	for i, sites := range tabGroups {
 		LOG.Infof("Starting tab %d", i)
