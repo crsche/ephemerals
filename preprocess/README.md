@@ -14,6 +14,12 @@ The program uses [trust_dns_resolver](https://docs.rs/trust-dns-resolver/latest/
 
 Please look under `[preprocess]` in the [config.toml](../config.toml) file. Please note that **all paths are relative to your current working directory**.
 
+## Running
+
+`RUST_LOG={desired_level} cargo run --release`
+
+You probably want to use `RUST_LOG="info"`
+
 ## TODO
 
 - Hone the criteria for what indicates whether the hostname doesn't exist (based on a DNS response).

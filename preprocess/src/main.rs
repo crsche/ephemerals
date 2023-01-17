@@ -39,7 +39,6 @@ struct Config {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-	env::set_var("RUST_LOG", "info");
 	pretty_env_logger::init();
 	info!("Initialized logging");
 
