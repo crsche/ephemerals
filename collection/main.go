@@ -127,19 +127,19 @@ func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	}
 }
 
-func getQueue(sites []InputSite, b *playwright.Browser, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+func getQueue(sites []InputSite, ctx *playwright.BrowserContext, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
 	for _, site := range sites {
-		getSite(site.Url, site.Category, b, timeout, collection, dnsClient, dnsConf)
+		getSite(site.Url, site.Category, ctx, timeout, collection, dnsClient, dnsConf)
 	}
 	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
-func getSite(url string, category string, b *playwright.Browser, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
+func getSite(url string, category string, ctx *playwright.BrowserContext, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
 	LOG.Infof("%s: starting data collection", url)
 	url = "https://" + url
 
-	p, e := (*b).NewPage()
+	p, e := (*ctx).NewPage()
 	if e != nil {
 		LOG.Errorf("%s: failed to create page: %v", url, e)
 	}
@@ -264,6 +264,10 @@ func main() {
 		LOG.Panicf("Failed to launch browser: %v", e)
 	}
 	LOG.Infof("Launched Chromium version %s", browser.Version())
+	ctx, e := browser.NewContext()
+	if e != nil {
+		LOG.Panic("Failed to create context: %v", e)
+	}
 
 	//! Init DNS client
 	dnsConf, e := dns.ClientConfigFromFile(conf.Collection.Dns.ConfPath)
@@ -283,7 +287,7 @@ func main() {
 	for i, sites := range tabGroups {
 		LOG.Infof("Starting tab %d", i)
 		wg.Add(1)
-		go getQueue(sites, &browser, conf.Collection.Browser.Timeout, collection, &c, dnsConf, &wg)
+		go getQueue(sites, &ctx, conf.Collection.Browser.Timeout, collection, &c, dnsConf, &wg)
 	}
 	wg.Wait()
 
@@ -305,9 +309,4 @@ func main() {
 		LOG.Panicf("Failed to disconnect from DB: %v", e)
 	}
 	LOG.Info("Disconnected from DB")
-
-	e = rawLog.Sync()
-	if e != nil {
-		LOG.Panicf("Failed to sync log buffers: %v", e)
-	}
 }
