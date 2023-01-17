@@ -1,7 +1,7 @@
 [collection]
 # Sites to visit, should be in {category: [url, ...]} format
-sites_in = "sites5000.json"
-log_level = ""
+sites_in = "sites1.json"
+log_level = "debug"
 
 [collection.db]
 # MongoDB config
@@ -11,7 +11,7 @@ collection = "sites"
 
 [collection.browser]
 # Path to Playwright browser (Chromium) binary IF LEFT EMPTY IT WILL BE DETECTED AUTOMATICALLY
-path = ""
+path = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
 # How many tabs to be open at any given time
 max_tabs = 64
 # Timeout for waiting for "networkidle" in milliseconds
