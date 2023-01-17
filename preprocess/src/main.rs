@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
 	pb.set_message("Starting");
 	pb.set_style(
 		ProgressStyle::with_template(
-			"{spinner:.green} [{elapsed_precise}] [{msg:<20}] [{wide_bar:.cyan/blue}] \
+			"{spinner:.green} [{elapsed_precise}] [{msg:^25}] [{wide_bar:.cyan/blue}] \
 			 [{human_pos}/{human_len}] — [{per_sec} ({eta})]",
 		)
 		.unwrap()
