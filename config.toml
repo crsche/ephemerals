@@ -21,10 +21,14 @@ timeout = 30000
 conf_path = "/etc/resolv.conf"
 
 
-[preprocessor]
+[preprocess]
 # List of URLs to be processed
-in = "tranco100k.csv"
+input = "tranco100k.json"
 # Output of the URLs that 'exist'
-exists_out = "100k_exists.csv"
+exists_out = "100k_exists.json"
 # Output of the URLs that don't 'exist'
-unexists_out = "100k_unexists.csv"
+unexists_out = "100k_unexists.json"
+# Should the output be pretty-printed JSON
+pretty = true
+# How many requests to send at one time
+concurrent_requests = 64
