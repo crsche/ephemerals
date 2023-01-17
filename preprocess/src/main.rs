@@ -7,13 +7,15 @@ extern crate pretty_env_logger;
 use std::{
 	env,
 	fs::{self, File, OpenOptions},
-	io::{BufRead, BufReader, BufWriter, Write},
+	io::{BufReader, BufWriter, Write},
+	sync::{Arc, Mutex},
 };
 
 use anyhow::Result;
 use futures::{stream, StreamExt};
 use hashbrown::HashMap;
-use serde::{Deserialize, Serialize};
+use pbr::ProgressBar;
+use serde::Deserialize;
 use tokio::task::JoinHandle;
 use trust_dns_resolver::{config::*, error::ResolveErrorKind, TokioAsyncResolver};
 
@@ -50,6 +52,8 @@ async fn main() -> Result<()> {
 	let input: HashMap<String, Vec<String>> = serde_json::from_reader(rdr)?;
 	info!("Processed input from {}", conf.input);
 
+	let num_hostnames = input.iter().map(|(_, v)| v.len() as u64).sum();
+
 	// DNS resolver (reused)
 	let resolver =
 		TokioAsyncResolver::tokio(ResolverConfig::cloudflare(), ResolverOpts::default())?;
@@ -63,6 +67,7 @@ async fn main() -> Result<()> {
 	let mut it = input.into_iter();
 
 	info!("Beginning data collection");
+	let pb = Arc::new(Mutex::new(ProgressBar::new(num_hostnames)));
 	// Split based on hostname existence
 	while let Some((category, hostnames)) = it.next() {
 		// Caches for existing and unexisting hosts
@@ -72,6 +77,7 @@ async fn main() -> Result<()> {
 		// Determine if hostnamess exist
 		let mut st = stream::iter(hostnames)
 			.map(|hostname| {
+				let pb = &pb;
 				let resolver = &resolver;
 				async move {
 					let resp = resolver.lookup_ip(format!("{}.", &hostname)).await;
@@ -87,6 +93,7 @@ async fn main() -> Result<()> {
 					};
 
 					debug!("{} ok: {}", &hostname, exists);
+					pb.lock().unwrap().inc();
 					(hostname, exists)
 				}
 			})
@@ -100,11 +107,11 @@ async fn main() -> Result<()> {
 				unexisting.push(hostname)
 			}
 		}
-		info!("{}: pushing vectors", &category);
 		// Add the vectors to the output object
 		exists.insert(category.clone(), existing);
 		unexists.insert(category, unexisting);
 	}
+	pb.lock().unwrap().finish();
 	info!("Finished data collection");
 
 	// Write output objects to file in parallel
