@@ -96,10 +96,12 @@ async fn main() -> Result<()> {
 					let exists = match resp {
 						Ok(_) => true,
 						Err(e) => {
-							debug!("{}: DNS lookup returned error: {}", &hostname, e);
 							match e.kind() {
 								ResolveErrorKind::NoRecordsFound { .. } => false,
-								_ => true,
+								_ => {
+									info!("{}: {}", hostname, e.kind());
+									false
+								},
 							}
 						}
 					};
@@ -126,6 +128,12 @@ async fn main() -> Result<()> {
 	}
 	pb.finish();
 	info!("Finished data collection");
+
+	let num_exists: usize = exists.iter().map(|(_, v)| v.len()).sum();
+	info!("{}/{} exist", num_exists, num_hostnames);
+
+	let num_unexists: usize = unexists.iter().map(|(_, v)| v.len()).sum();
+	info!("{}/{} don't exist", num_unexists, num_hostnames);
 
 	// Write output objects to file in parallel
 	let exists_saving: JoinHandle<Result<()>> = tokio::spawn(async move {
