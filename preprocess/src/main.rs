@@ -5,16 +5,15 @@ extern crate log;
 extern crate pretty_env_logger;
 
 use std::{
-	env,
+	fmt,
 	fs::{self, File, OpenOptions},
 	io::{BufReader, BufWriter, Write},
-	sync::Mutex,
 };
 
 use anyhow::Result;
 use futures::{stream, StreamExt};
 use hashbrown::HashMap;
-use pbr::ProgressBar;
+use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 use trust_dns_resolver::{config::*, error::ResolveErrorKind, TokioAsyncResolver};
@@ -66,7 +65,19 @@ async fn main() -> Result<()> {
 	let mut it = input.into_iter();
 
 	info!("Beginning data collection");
-	let pb = Mutex::new(ProgressBar::new(num_hostnames));
+	let pb = ProgressBar::new(num_hostnames);
+	pb.set_style(
+		ProgressStyle::with_template(
+			"{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} \
+			 ({eta})",
+		)
+		.unwrap()
+		.with_key("eta", |state: &ProgressState, w: &mut dyn fmt::Write| {
+			write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
+		})
+		.progress_chars("=>-")
+	);
+
 	// Split based on hostname existence
 	while let Some((category, hostnames)) = it.next() {
 		// Caches for existing and unexisting hosts
@@ -76,8 +87,8 @@ async fn main() -> Result<()> {
 		// Determine if hostnamess exist
 		let mut st = stream::iter(hostnames)
 			.map(|hostname| {
-				let pb = &pb;
 				let resolver = &resolver;
+				let pb = pb.clone();
 				async move {
 					let resp = resolver.lookup_ip(format!("{}.", &hostname)).await;
 					let exists = match resp {
@@ -92,7 +103,7 @@ async fn main() -> Result<()> {
 					};
 
 					debug!("{} ok: {}", &hostname, exists);
-					pb.lock().unwrap().inc();
+					pb.inc(1);
 					(hostname, exists)
 				}
 			})
@@ -111,7 +122,7 @@ async fn main() -> Result<()> {
 		exists.insert(category.clone(), existing);
 		unexists.insert(category, unexisting);
 	}
-	pb.lock().unwrap().finish();
+	pb.finish();
 	info!("Finished data collection");
 
 	// Write output objects to file in parallel
