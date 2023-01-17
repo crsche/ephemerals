@@ -18,9 +18,15 @@ Install Playwright using the following command (if you run into problems, remove
 
 Please look under `[collection]` in the [config.toml](../config.toml) file. You'll probably want to change the `path` under `[collection.browser]`, it is detected automatically by default but this functionality can be finnicky.
 
-## To run
+## Usage
 
 `go run main.go`
+
+### Args
+
+- `-c` (string): Path to `config.toml` file, default is `../config.toml`
+- `-t` (int): Trial number, default is `-1`
+  - You **must** change this or it will be reused.
 
 You can set the log level in the config if it's too messy.
 
