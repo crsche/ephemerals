@@ -12,7 +12,7 @@ The program uses [trust_dns_resolver](https://docs.rs/trust-dns-resolver/latest/
 
 ## Configuration
 
-Please look under `[preprocess]` in the [config.toml](../config.toml) file.
+Please look under `[preprocess]` in the [config.toml](../config.toml) file. Please note that **all paths are relative to your current working directory**.
 
 ## TODO
 
