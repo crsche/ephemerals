@@ -1,6 +1,7 @@
 [collection]
 # Sites to visit, should be in {category: [url, ...]} format
 sites_in = "sites5000.json"
+log_level = ""
 
 [collection.db]
 # MongoDB config

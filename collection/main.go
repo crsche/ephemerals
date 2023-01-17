@@ -34,8 +34,9 @@ type (
 	// TOML configuration
 	Config struct {
 		Collection struct {
-			Sites string `toml:"sites_in"`
-			Db    struct {
+			Sites    string `toml:"sites_in"`
+			LogLevel string `toml:"log_level"`
+			Db       struct {
 				Uri        string
 				Name       string
 				Collection string
@@ -190,23 +191,27 @@ func getSite(url string, category string, b *playwright.Browser, timeout float64
 var LOG *zap.SugaredLogger
 
 func main() {
+	//! Parse config.toml
+	var conf Config
+	_, e := toml.DecodeFile(CONF_PATH, &conf)
+	if e != nil {
+		log.Panicf("Failed to load TOML file at %s: %v", CONF_PATH, e)
+	}
+
 	//! Init logging
-	// TODO: Change config for prod
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder // Enable color
-	config.Level.SetLevel(zapcore.InfoLevel)
+	level, e := zapcore.ParseLevel(conf.Collection.LogLevel)
+	if e != nil {
+		log.Panicf("Failed to parse log level of %s: %v", conf.Collection.LogLevel, e)
+	}
+	config.Level.SetLevel(level)
 	rawLog, e := config.Build()
 	if e != nil {
 		log.Panicf("Failed to build logger config: %v", e)
 	}
 	LOG = rawLog.Sugar()
 	LOG.Info("Initialized logger")
-
-	var conf Config
-	_, e = toml.DecodeFile(CONF_PATH, &conf)
-	if e != nil {
-		LOG.Panicf("Failed to load TOML file at %s: %v", CONF_PATH, e)
-	}
 
 	//! Load sites file
 	f, e := os.Open(conf.Collection.Sites)
