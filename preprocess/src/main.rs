@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
 	let conf = raw_conf.preprocess;
 	info!("Loaded config from {}", CONF_PATH);
 
-	let in_file = File::open(format!("../{}", conf.input))?;
+	let in_file = File::open(&conf.input)?;
 	let rdr = BufReader::new(in_file);
 	let input: HashMap<String, Vec<String>> = serde_json::from_reader(rdr)?;
 	info!("Processed input from {}", conf.input);
