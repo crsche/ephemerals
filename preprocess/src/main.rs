@@ -66,16 +66,17 @@ async fn main() -> Result<()> {
 
 	info!("Beginning data collection");
 	let pb = ProgressBar::new(num_hostnames);
+	pb.set_message("Starting");
 	pb.set_style(
 		ProgressStyle::with_template(
-			"{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} \
-			 ({eta})",
+			"{spinner:.green} [{elapsed_precise}] [{msg:<20}] [{wide_bar:.cyan/blue}] \
+			 [{human_pos}/{human_len}] — [{per_sec} ({eta})]",
 		)
 		.unwrap()
 		.with_key("eta", |state: &ProgressState, w: &mut dyn fmt::Write| {
 			write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
 		})
-		.progress_chars("=>-")
+		.progress_chars("=>-"),
 	);
 
 	// Split based on hostname existence
@@ -90,6 +91,7 @@ async fn main() -> Result<()> {
 				let resolver = &resolver;
 				let pb = pb.clone();
 				async move {
+					pb.set_message(hostname.clone());
 					let resp = resolver.lookup_ip(format!("{}.", &hostname)).await;
 					let exists = match resp {
 						Ok(_) => true,
