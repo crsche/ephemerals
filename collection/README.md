@@ -16,7 +16,7 @@ Install Playwright using the following command (if you run into problems, remove
 
 ## Configuration
 
-Please look under `[collection]` in the [config.toml](../config.toml) file.
+Please look under `[collection]` in the [config.toml](../config.toml) file. You'll probably want to change the `path` under `[collection.browser]`, it is detected automatically by default but this functionality can be finnicky.
 
 ## To run
 

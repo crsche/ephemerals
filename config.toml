@@ -10,7 +10,7 @@ name = "ephemerals"
 collection = "sites"
 
 [collection.browser]
-# Path to Playwright browser binary IF LEFT EMPTY IT WILL BE DETECTED AUTOMATICALLY
+# Path to Playwright browser (Chromium) binary IF LEFT EMPTY IT WILL BE DETECTED AUTOMATICALLY
 path = ""
 # How many tabs to be open at any given time
 max_tabs = 64
