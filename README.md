@@ -4,32 +4,20 @@ This is a basic program for "ephemeral" URL research. It is still in early devel
 
 ## Dependencies
 
-- [Go](https://go.dev/doc/install)
-- [Playwright](https://playwright.dev/docs/intro) version of Chromium.
-- [MongoDB](https://www.mongodb.com/try/download/community)
+You can find dependencies in tools' respective folders ([collection](collection) and [preprocess](preprocess))
 
 ## Configuration
 
-Configuration is done using the `const` fields in [`main.go`](main.go)
+All configuration is done using the [config.toml](config.toml) file. Definitions for specific flags are defined in that file.
 
-- **NOTES**:
-  - You must update the `BROWSER_PATH` variable as it is specific to me (but your path should look similar), use `go run github.com/playwright-community/playwright-go/cmd/playwright install` to install Playwright.
-  - Additionally, the `SITES_FILE` must be in the following format:
+## Inputs
 
-    - ```json
-      {"category": ["google.com", "duckduckgo.com"] }
-      ```
+**All inputs are in the following format**:
+
+```json
+{"category": ["hostname1", "hostname2"]}
+```
 
 ## Running
 
-To run the script:
-
-```sh
-go run main.go
-```
-
-## TODO
-
-- Preprocessor to remove the unreachable websites
-- ~~Add TTL data gathering~~
-- ~~Make data collection more efficient/parallel (streams vs chunks?)~~
+You can find instructions to run the tools in their respective folders.
