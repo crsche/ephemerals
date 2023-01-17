@@ -23,11 +23,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"flag"
 	"github.com/BurntSushi/toml"
-)
-
-const (
-	CONF_PATH = "../config.toml"
 )
 
 type (
@@ -42,8 +39,8 @@ type (
 				Collection string
 			}
 			Browser struct {
-				Path    string
-				MaxTabs int `toml:"max_tabs"`
+				Path     string
+				MaxTabs  int     `toml:"max_tabs"`
 				LoadTime float64 `toml:"load_time"`
 			}
 			Dns struct {
@@ -76,6 +73,7 @@ type (
 		BrowserVersion string `bson:"browser_version"`
 		// Time at which the trial was **started**
 		StartTime time.Time `bson:"start_time"`
+		TrialNum  int       `bson:"trial_num"`
 		// List of requests observed by trial
 		//
 		// There can and **will** be duplicates
@@ -127,15 +125,15 @@ func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	}
 }
 
-func getQueue(sites []InputSite, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+func getQueue(sites []InputSite, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, trialNum int, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
 	for _, site := range sites {
-		getSite(site.Url, site.Category, ctx, loadTime, collection, dnsClient, dnsConf)
+		getSite(site.Url, site.Category, ctx, loadTime, collection, trialNum, dnsClient, dnsConf)
 	}
 	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
-func getSite(url string, category string, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
+func getSite(url string, category string, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, trialNum int, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
 	LOG.Infof("%s: starting data collection", url)
 	url = "https://" + url
 
@@ -171,7 +169,7 @@ func getSite(url string, category string, ctx *playwright.BrowserContext, loadTi
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
 
 	// Construct trial
-	trial := Trial{BrowserVersion: p.Context().Browser().Version(), StartTime: start, Requests: reqs}
+	trial := Trial{BrowserVersion: p.Context().Browser().Version(), StartTime: start, TrialNum: trialNum, Requests: reqs}
 
 	True := true // So we can reference
 	// Insert or update the new trial Debugrmation
@@ -187,14 +185,22 @@ func getSite(url string, category string, ctx *playwright.BrowserContext, loadTi
 }
 
 // ! GLOBAL LOGGER
-var LOG *zap.SugaredLogger
+var (
+	LOG *zap.SugaredLogger
+)
 
 func main() {
+	//! Flags
+	var trialNum int
+	var confPath string
+	flag.IntVar(&trialNum, "t", -1, "Trial number, defaults to -1")
+	flag.StringVar(&confPath, "conf", "../config.toml", "Path to the configuration file, defaults to '../config.toml'")
+
 	//! Parse config.toml
 	var conf Config
-	_, e := toml.DecodeFile(CONF_PATH, &conf)
+	_, e := toml.DecodeFile(confPath, &conf)
 	if e != nil {
-		log.Panicf("Failed to load TOML file at %s: %v", CONF_PATH, e)
+		log.Panicf("Failed to load TOML file at %s: %v", confPath, e)
 	}
 
 	//! Init logging
@@ -285,7 +291,7 @@ func main() {
 	for i, sites := range tabGroups {
 		LOG.Infof("Starting tab %d", i)
 		wg.Add(1)
-		go getQueue(sites, &ctx, conf.Collection.Browser.LoadTime, collection, &c, dnsConf, &wg)
+		go getQueue(sites, &ctx, conf.Collection.Browser.LoadTime, collection, trialNum, &c, dnsConf, &wg)
 	}
 	wg.Wait()
 
