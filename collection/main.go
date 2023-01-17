@@ -44,7 +44,7 @@ type (
 			Browser struct {
 				Path    string
 				MaxTabs int `toml:"max_tabs"`
-				Timeout float64
+				LoadTime float64 `toml:"load_time"`
 			}
 			Dns struct {
 				ConfPath string `toml:"conf_path"`
@@ -127,15 +127,15 @@ func getTTL(c *dns.Client, conf *dns.ClientConfig, url *u.URL) (uint32, error) {
 	}
 }
 
-func getQueue(sites []InputSite, ctx *playwright.BrowserContext, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
+func getQueue(sites []InputSite, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig, wg *sync.WaitGroup) {
 	for _, site := range sites {
-		getSite(site.Url, site.Category, ctx, timeout, collection, dnsClient, dnsConf)
+		getSite(site.Url, site.Category, ctx, loadTime, collection, dnsClient, dnsConf)
 	}
 	wg.Done()
 }
 
 // Gets data for a given site and inserts it into the database
-func getSite(url string, category string, ctx *playwright.BrowserContext, timeout float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
+func getSite(url string, category string, ctx *playwright.BrowserContext, loadTime float64, collection *mongo.Collection, dnsClient *dns.Client, dnsConf *dns.ClientConfig) {
 	LOG.Infof("%s: starting data collection", url)
 	url = "https://" + url
 
@@ -164,10 +164,9 @@ func getSite(url string, category string, ctx *playwright.BrowserContext, timeou
 	_, e = p.Goto(url)
 	if e != nil {
 		LOG.Errorf("%s: failed to fully load: %v", url, e)
-	} else {
-		_, e := p.WaitForNavigation(playwright.PageWaitForNavigationOptions{WaitUntil: playwright.WaitUntilStateNetworkidle, Timeout: &timeout})
-		LOG.Warnf("%s: failed to wait for network idle: %v", url, e)
 	}
+	LOG.Debugf("%s: waiting %fms", url, loadTime)
+	p.WaitForTimeout(loadTime)
 
 	LOG.Debugf("%s: got %d requests", url, len(reqs))
 
@@ -286,7 +285,7 @@ func main() {
 	for i, sites := range tabGroups {
 		LOG.Infof("Starting tab %d", i)
 		wg.Add(1)
-		go getQueue(sites, &ctx, conf.Collection.Browser.Timeout, collection, &c, dnsConf, &wg)
+		go getQueue(sites, &ctx, conf.Collection.Browser.LoadTime, collection, &c, dnsConf, &wg)
 	}
 	wg.Wait()
 

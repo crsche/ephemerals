@@ -14,8 +14,8 @@ collection = "sites"
 path = "/home/cone/.cache/ms-playwright/chromium-1041/chrome-linux/chrome"
 # How many tabs to be open at any given time
 max_tabs = 64
-# Timeout for waiting for "networkidle" in milliseconds
-timeout = 30000
+# How long to wait for websites to load
+load_time = 30000
 
 [collection.dns]
 # resolv.conf format configuration for getting dns resolvers
