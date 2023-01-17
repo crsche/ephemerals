@@ -8,6 +8,8 @@ use std::{
 	env,
 	fs::{self, File, OpenOptions},
 	io::{BufReader, BufWriter, Write},
+	net::Ipv4Addr,
+	str::FromStr,
 	sync::{Arc, Mutex},
 };
 
@@ -67,7 +69,7 @@ async fn main() -> Result<()> {
 	let mut it = input.into_iter();
 
 	info!("Beginning data collection");
-	let pb = Arc::new(Mutex::new(ProgressBar::new(num_hostnames)));
+	let pb = Mutex::new(ProgressBar::new(num_hostnames));
 	// Split based on hostname existence
 	while let Some((category, hostnames)) = it.next() {
 		// Caches for existing and unexisting hosts
@@ -77,6 +79,7 @@ async fn main() -> Result<()> {
 		// Determine if hostnamess exist
 		let mut st = stream::iter(hostnames)
 			.map(|hostname| {
+
 				let pb = &pb;
 				let resolver = &resolver;
 				async move {
@@ -97,7 +100,7 @@ async fn main() -> Result<()> {
 					(hostname, exists)
 				}
 			})
-			.buffered(conf.concurrent_requests);
+			.buffer_unordered(conf.concurrent_requests);
 
 		// Insert the hostnames into the local vectors depending on if they exist
 		while let Some((hostname, exists)) = st.next().await {
@@ -107,6 +110,7 @@ async fn main() -> Result<()> {
 				unexisting.push(hostname)
 			}
 		}
+		debug!("{}: finished", &category);
 		// Add the vectors to the output object
 		exists.insert(category.clone(), existing);
 		unexists.insert(category, unexisting);
