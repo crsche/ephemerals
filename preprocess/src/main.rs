@@ -1,5 +1,3 @@
-#![feature(async_closure)]
-
 #[macro_use]
 extern crate log;
 extern crate pretty_env_logger;
@@ -13,10 +11,10 @@ use std::{
 use anyhow::Result;
 use futures::{stream, StreamExt};
 use hashbrown::HashMap;
+use hickory_resolver::{config::*, error::ResolveErrorKind, TokioAsyncResolver};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
-use trust_dns_resolver::{config::*, error::ResolveErrorKind, TokioAsyncResolver};
 
 const CONF_PATH: &'static str = "../config.toml";
 
@@ -53,8 +51,7 @@ async fn main() -> Result<()> {
 	let num_hostnames = input.iter().map(|(_, v)| v.len() as u64).sum();
 
 	// DNS resolver (reused)
-	let resolver =
-		TokioAsyncResolver::tokio(ResolverConfig::cloudflare(), ResolverOpts::default())?;
+	let resolver = TokioAsyncResolver::tokio(ResolverConfig::cloudflare(), ResolverOpts::default());
 
 	// Main "objects" representing existing and unexisting hostnames in the same
 	// form as the input
@@ -95,15 +92,13 @@ async fn main() -> Result<()> {
 					let resp = resolver.lookup_ip(format!("{}.", &hostname)).await;
 					let exists = match resp {
 						Ok(_) => true,
-						Err(e) => {
-							match e.kind() {
-								ResolveErrorKind::NoRecordsFound { .. } => false,
-								_ => {
-									info!("{}: {}", hostname, e.kind());
-									false
-								},
+						Err(e) => match e.kind() {
+							ResolveErrorKind::NoRecordsFound { .. } => false,
+							_ => {
+								info!("{}: {}", hostname, e.kind());
+								false
 							}
-						}
+						},
 					};
 
 					debug!("{} ok: {}", &hostname, exists);
